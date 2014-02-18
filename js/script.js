@@ -1,5 +1,7 @@
-/* Author: Aaron Bieber
-*/
+/* vim-todo
+ *
+ * Author: Aaron Bieber
+ */
 
 /* Globals */
 var carat = 0;
@@ -47,6 +49,12 @@ function renderItemsFromJSON(json) {
 		// Apply listeners.
 		getTask(items).focus(handle_clickToEdit);
 		getTask(items).blur(editEnd);
+    getTask(items).bind('paste', function(e) {
+      var element = $(e.target);
+      window.setTimeout(function() {
+        console.log(element.html());
+      }, 100)
+    });
 
 		items++;
 	}
@@ -198,6 +206,9 @@ function insertNewItem(index, sibling_index) {
 	// Apply listeners.
 	getTask(index).focus(handle_clickToEdit);
 	getTask(index).blur(editEnd);
+  getTask(index).bind('input propertychange', function(e) {
+    console.log('Input received data.');
+  });
 
 	// Set up the display and begin editing.
 	countCarats();
