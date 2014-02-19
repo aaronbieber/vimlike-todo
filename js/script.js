@@ -49,12 +49,6 @@ function renderItemsFromJSON(json) {
 		// Apply listeners.
 		getTask(items).focus(handle_clickToEdit);
 		getTask(items).blur(editEnd);
-    getTask(items).bind('paste', function(e) {
-      var element = $(e.target);
-      window.setTimeout(function() {
-        console.log(element.html());
-      }, 100)
-    });
 
 		items++;
 	}
@@ -792,6 +786,20 @@ $(document).ready(function() {
 	$('#lists').mouseleave(listMenu_mouseleave);
 	$('#lists a').click(createList);
 	$('#lists input').bind('keydown', 'return', createList);
+
+  $('#paste_box').bind('paste', function(e) {
+    var element = $(e.target);
+    window.setTimeout(function() {
+      var pasted_text = element.val();
+      var pasted_lines = pasted_text.split(/\n/);
+      pasted_lines = _.reject(pasted_lines, function(line) { return !line.length; });
+      _.each(pasted_lines, function(line) {
+        console.log('Adding ' + line);
+        insertNewItem(items, items);
+        getItem(items-1).find('.task').html(line);
+      });
+    }, 100)
+  });
 
 	// Load the requested list.
 	load(save);

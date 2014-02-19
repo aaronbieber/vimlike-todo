@@ -500,6 +500,14 @@ h2 {
 	background: transparent url('../img/loading.gif') no-repeat 90% 50% !important;
 }
 
+div.paste-container {
+	max-width: 500px;
+	margin: 1em auto 0 auto;
+}
+
+div.paste-container textarea {
+	width: 100%;
+}
 
 /* ==|== non-semantic helper classes ========================================
    Please define your styles before this section.
