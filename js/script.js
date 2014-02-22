@@ -84,7 +84,7 @@ function updateItems(json) {
   for(i in json.deleted)
     prune(json.deleted[i]);
 
-  list_data = getItemsAsJSON();
+  list_data = get_list_as_json();
 }
 
 function prune(id) {
@@ -520,8 +520,11 @@ function handle_i_outdent(e) {
   itemOutdent();
 }
 
-function setEndOfContenteditable(contentEditableElement)
-{
+function get_list_name_from_title(title) {
+  return title.toLowerCase().replace(/[^a-z0-9]/g, '-');
+}
+
+function setEndOfContenteditable(contentEditableElement) {
     var range,selection;
     if(document.createRange)//Firefox, Chrome, Opera, Safari, IE 9+
     {
@@ -546,7 +549,7 @@ function vim() {
   window.setTimeout(function() { $('#vim').fadeOut() }, 2000);
 }
 
-function getItemsAsJSON() {
+function get_list_as_json() {
   ret = { title: $('#title input').val(), items: [] }
   $('#todo-container ul li').each(function() {
     i = $(this);
@@ -581,7 +584,7 @@ function load(callback) {
       if(data.status)
         $('#title input').val(data.data.title);
         renderItemsFromJSON(data.data.items);
-        list_data = getItemsAsJSON();
+        list_data = get_list_as_json();
       setCarat(0);
       this();
     }, callback)
@@ -599,12 +602,18 @@ function serverRefresh() {
     success: function(data, textStatus, jqXHR) {
       if(data.status)
         updateItemsFromJSON(data.data);
-        list_data = getItemsAsJSON();
+        list_data = get_list_as_json();
     }
   });
 }
 
 function save(immediate) {
+  var list_title = $('input[name=title]').val();
+  var list_name = get_list_name_from_title(list_title);
+  if (!list_name.length) {
+    console.log('No list name; not saving.');
+    return;
+  }
   /* If the user is going nuts making quick changes, skip saving when the
    * interval is shorter than the min save delay. If the user is currently
    * editing, keep the delay at the minimum but don't save yet.
@@ -635,7 +644,8 @@ function save(immediate) {
   // Set the last saved time (this is the last time a save was attempted)
   last_saved = Date.now();
 
-  new_list_data = getItemsAsJSON();
+  new_list_data = get_list_as_json();
+  //unescape(location.hash.replace(/^#/, ''));
   printArray(new_list_data);
   if(new_list_data !== list_data) {
     // If saving immediately, clear any pending save timer.
@@ -646,7 +656,7 @@ function save(immediate) {
     $('#save-status').addClass('saving').find('span').html('Saving...');
     $.ajax('index.php', {
       type: 'post',
-      data: { action: 'save', list: list_name, data: getItemsAsJSON() },
+      data: { action: 'save', list: list_name, data: get_list_as_json() },
       success: function(data, textStatus, jqXHR) {
         if(data.status) {
           console.log('Successful save. Pruning deletes...');
@@ -657,6 +667,7 @@ function save(immediate) {
           updateItems(data.data);
 
           $('#save-status').removeClass('saving').find('span').html('Saved');
+          location.hash = '#' + list_name;
 
           // Reset the save delay.
           save_delay = min_save_delay;
@@ -720,19 +731,27 @@ function listMenu_mouseleave() {
     $('#lists').fadeOut('fast');
 }
 
-function createList(e) {
+function handle_create_list(e) {
   e.preventDefault();
 
-  if(!$('#lists input').val().length) return;
-  new_list_name = $('#lists input').val();
-  if(new_list_name.length > 50) return;
+  if(!$('#lists input').val().length)
+    return;
 
+  var new_list_name = $('#lists input').val();
+  if(new_list_name.length > 50)
+    return;
+
+  create_list(new_list_name);
+}
+
+function create_list(name) {
   $.ajax('index.php', {
     type: 'post',
     data: { action: 'new', author: 'aaron@aaronbieber.com', name: new_list_name },
     success: function(data, textStatus, jqXHR) {
       if(data.status) {
-        location.search = '?'+data.data.name;
+        location.hash = '#' + get_list_name_from_title(new_list_name);
+        //location.search = '?'+data.data.name;
         load(save);
       } else {
         alert(data.messages.join(', '));
@@ -791,8 +810,8 @@ $(document).ready(function() {
   $('div.nav ul li a').click(loadListMenu);
   $('#lists').mouseenter(listMenu_mouseenter);
   $('#lists').mouseleave(listMenu_mouseleave);
-  $('#lists a').click(createList);
-  $('#lists input').bind('keydown', 'return', createList);
+  $('#lists a').click(handle_create_list);
+  $('#lists input').bind('keydown', 'return', handle_create_list);
 
   $('#paste_box').bind('paste', function(e) {
     var element = $(e.target);

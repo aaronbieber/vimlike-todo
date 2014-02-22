@@ -56,21 +56,25 @@ function newList() {
 		$db = $conn->todo;
 
 		$lists = $db->lists;
-		$cursor = $lists->find(array( 'name' => $_GET['list'], 'author' => 'aaron@aaronbieber.com' ));
+		$cursor = $lists->find(array('name' => $_GET['list'], 'author' => 'aaron@aaronbieber.com'));
 		if($cursor->hasNext()) {
 			$response['status'] = false;
 			array_push($response['messages'], 'A list by that name already exists.');
 		} else {
-			$lists->save(array( 'name' => $name, 'author' => $_POST['author'], 'title' => $_POST['name'] ));
-			$items = $db->items;
-			$items->save(array(
-				'list' => $name,
-				'item' => 0,
-				'text' => '',
-				'depth' => 0,
-				'done' => false
-			));
-			$response['data'] = array( 'name' => $name );
+      $lists->save(array(
+        'name' => $name,
+        'author' => $_POST['author'],
+        'title' => $_POST['name'],
+        'items' => array(
+          array(
+            'item' => 0,
+            'text' => '',
+            'depth' => 0,
+            'done' => false
+          )
+        )
+      ));
+			$response['data'] = array('name' => $name);
 		}
 	}
 
@@ -163,7 +167,6 @@ function saveList() {
 	} else {
 		$list_name = $_POST['list'];
 		$data = json_decode(stripslashes($_POST['data']));
-		//$all_items = json_decode($_POST['items']);
 
 		try {
 			$conn = new Mongo('localhost');
@@ -171,48 +174,54 @@ function saveList() {
 
 			// Save the list name
 			$lists = $db->lists;
-			$list = $lists->find(array( 'name' => $list_name, 'author' => 'aaron@aaronbieber.com' ));
+      $current_list = array('name' => $list_name, 'author' => 'aaron@aaronbieber.com');
+			$list = $lists->find($current_list);
 			if($list->hasNext()) {
 				$list = $list->getNext();
 				$list['title'] = $data->title;
-				$lists->save($list);
+        $list['items'] = $data->items;
+				$lists->update($current_list, $list);
 			} else {
-				// Yo shit is in error, son
+        // Nothing found; create a new list.
+        $new_list = $current_list;
+        $new_list['title'] = $data->title;
+        $new_list['items'] = $data->items;
+        $lists->save($new_list);
 			}
 
-			// Get ready to save list items
-			$items = $db->items;
+			//// Get ready to save list items
+			//$items = $db->items;
 
-			$retval = array('new' => array(), 'deleted' => array());
-			foreach($data->items as $item) {
-				// Check for a delete
-				if($item->delete) {
-					// Save the ID for the return data.
-					array_push($retval['deleted'], $item->_id);
-					// Remove the item.
-					$items->remove( array( _id => new MongoId($item->_id) ) );
-				} else {
-					unset($item->delete);
+			//$retval = array('new' => array(), 'deleted' => array());
+			//foreach($data->items as $item) {
+			//	// Check for a delete
+			//	if($item->delete) {
+			//		// Save the ID for the return data.
+			//		array_push($retval['deleted'], $item->_id);
+			//		// Remove the item.
+			//		$items->remove( array( _id => new MongoId($item->_id) ) );
+			//	} else {
+			//		unset($item->delete);
 
-					// Set the ID for pre-existing items we are updating
-					$new = false;
-					if(strlen($item->_id)) {
-						$item->_id = new MongoId($item->_id);
-					} else {
-						$new = true;
-						$new_id = $item->new_id;
-						unset($item->new_id);
-						unset($item->_id);
-					}
+			//		// Set the ID for pre-existing items we are updating
+			//		$new = false;
+			//		if(strlen($item->_id)) {
+			//			$item->_id = new MongoId($item->_id);
+			//		} else {
+			//			$new = true;
+			//			$new_id = $item->new_id;
+			//			unset($item->new_id);
+			//			unset($item->_id);
+			//		}
 
-					$item->list = $list_name;
-					$item_ref = &$item;
-					$items->save($item_ref);
+			//		$item->list = $list_name;
+			//		$item_ref = &$item;
+			//		$items->save($item_ref);
 
-					if($new) array_push($retval['new'], array( 'new_id' => $new_id, '_id' => $item_ref->_id->{'$id'} ));
-				}
-			}
-			$response['data'] = $retval;
+			//		if($new) array_push($retval['new'], array( 'new_id' => $new_id, '_id' => $item_ref->_id->{'$id'} ));
+			//	}
+			//}
+			//$response['data'] = $retval;
 
 			// disconnect from server
 			$conn->close();
@@ -223,11 +232,6 @@ function saveList() {
 			$response['status'] = false;
 			array_push($response['messages'], 'Error: ' . $e->getMessage());
 		}
-
 	}
-
-	// Artificial slowdown so I can see what the hell is going on.
-	// TODO Delete this
 	return $response;
 }
-?>
