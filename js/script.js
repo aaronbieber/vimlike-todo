@@ -3,9 +3,469 @@
  * Author: Aaron Bieber
  */
 
-/* Globals */
-var carat = 0;
-var items = 0;
+(function() {
+  'use strict';
+
+  var Globals = {
+    chain: '',
+    chain_timer: null,
+    editing: false,
+    carat: 0,
+    items: 0
+  }
+
+  function render_items_from_json(json) {
+    for(i in json) {
+      item = json[i];
+      obj = renderItem(Globals.items, item.done, item.text, item.depth, item._id.$id);
+      $('#todo-container ul').append(obj);
+
+      // Apply listeners.
+      getTask(Globals.items).focus(handle_click_to_edit);
+      getTask(Globals.items).blur(edit_end);
+
+      Globals.items++;
+    }
+    redrawList();
+  }
+
+  function redraw_list() {
+    render_depth();
+    fix_corners();
+  }
+
+  function render_depth() {
+    $('#todo-container ul li').filter(filter_activeOnly).each(function() {
+      $(this).css({ 'padding-left': ($(this).data('depth') * 15) + 'px' })
+    });
+  }
+
+  function insert_new_item(index, sibling_index) {
+    var save_lock = true;
+
+    // Ensure a numeric argument
+    var index = index * 1;
+    var sibling_index = sibling_index * 1;
+    var new_depth = get_item(sibling_index).data('depth');
+    var new_item = render_item(index, false, '', new_depth);
+
+    new_item.data('new_id', uid());
+
+    if(index <= Globals.items - 1) {
+      // Increase all carat values greater than or equal to the target index
+      $('#todo-container ul li').filter(function() {
+        return !$(this).data('delete') && $(this).data('carat') * 1 >= index;
+      }).each(function() {
+        var this_carat = $(this).data('carat') * 1;
+        $(this).data('carat', this_carat + 1);
+        $(this).find('div.task').removeClass('focused');
+      });
+      get_item(index+1).before(new_item);
+    } else {
+      $('#todo-container ul').append(new_item);
+    }
+
+    // Apply listeners.
+    get_task(index).focus(handle_click_to_edit);
+    get_task(index).blur(edit_end);
+    get_task(index).bind('input propertychange', function(e) {
+      console.log('Input received data.');
+    });
+
+    // Set up the display and begin editing.
+    count_carats();
+    redraw_list();
+    set_carat(index);
+    edit_from_start();
+
+    save_lock = false;
+  }
+
+  function item_indent() {
+    console.log('Indenting item ' + Globals.carat);
+    if(Globals.carat == 0) return;
+
+    var item = getItem(Globals.carat);          // The current item
+    var mom = getItem(Globals.carat - 1);       // The item directly above the current item
+    var depth = item.data('depth');     // The current item's depth
+    var moms_depth = mom.data('depth'); // The depth of the item directly above the current item
+
+    // Do not indent more than one greater than the item above
+    if(depth == moms_depth + 1) return;
+
+    // Increase the item's depth
+    item.data('depth', depth + 1);
+
+    // If this is not the last item, see if we should indent any children
+    if(Globals.carat < items - 1) {
+      all_items = $('#todo-container ul li');
+      indent_items = [];
+      for(i in all_items) {
+        item = $(all_items[i]);
+        if(item.data('delete')) continue;
+        if(item.data('carat') <= carat) continue;
+        if(item.data('depth') > depth) indent_items.push(item);
+        else break;
+      }
+      $(indent_items).each(function() {
+        $(this).data('depth', $(this).data('depth') + 1)
+      });
+    }
+
+    // Update the display
+    redraw_list();
+    save(true);
+  }
+
+  function item_outdent() {
+    // The current item
+    var item = getItem(carat);
+    // The current item's depth
+    var depth = item.data('depth');
+
+    if(depth == 0) return;
+
+    // Decrease the item's depth
+    item.data('depth', depth - 1);
+    // If this is not the last item, see if we should outdent any children
+    if(Globals.carat < items - 1) {
+      var all_items = $('#todo-container ul li');
+      var indent_items = [];
+      for(i in all_items) {
+        var item = $(all_items[i]);
+        if(item.data('delete')) continue;
+        if(item.data('carat') <= carat) continue;
+        if(item.data('depth') > depth) indent_items.push(item);
+        else break;
+      }
+      $(indent_items).each(function() {
+        $(this).data('depth', $(this).data('depth') - 1)
+      });
+    }
+
+    // Update the display
+    redraw_list();
+    save(true);
+  }
+
+  function get_item(carat) {
+    return $('#todo-container ul li').filter(function() {
+      return !$(this).data('deleted') && $(this).data('carat') == carat
+    });
+  }
+
+  function get_task(carat) {
+    var item = get_item(carat);
+    return $(item).find('div.task');
+  }
+
+  function render_item(carat, done, text, depth) {
+    // Force numeric values
+    carat = carat * 1;
+    depth = depth * 1;
+
+    // Force Boolean for the done value
+    done = !! done;
+
+    return  $('<li>').addClass('focused')
+        .data('delete', false)
+        .data('editing', false)
+        .data('carat', carat)
+        .data('depth', depth)
+        .append(
+          $('<div>').addClass('check').append(
+            function() { var e = $('<input type="checkbox">'); if(done) e.attr('checked', 'checked'); return e }
+          ),
+          $('<div contenteditable>').addClass('task').html(text)
+        );
+  }
+
+  function count_carats() {
+    Globals.items = $('#todo-container ul li').filter(filter_activeOnly).length;
+  }
+
+  function handle_indent(e) {
+    if(editing) return;
+
+    item_indent();
+  }
+
+  function handle_outdent(e) {
+    if(editing) return;
+
+    item_outdent();
+  }
+
+  function handle_i_indent(e) {
+    e.preventDefault();
+    item_indent();
+  }
+
+  function handle_i_outdent(e) {
+    e.preventDefault();
+    item_outdent();
+  }
+
+  function handle_move_carat_to_top(e) {
+    if(Globals.editing) return;
+
+    e.preventDefault();
+
+    // This is a chain command, so it only fires on the second press.
+    if(chain == 'g')
+      setCarat(0);
+    else if(chain == null) {
+      chain = 'g';
+      window.setTimeout(resetchain, 500);
+    }
+  }
+
+  function handle_chain_key_down(e) {
+    if(Globals.editing) return;
+
+    if(!Globals.chain.length) {
+      Globals.chain = e.handleObj.data;
+      Globals.chain_timer = window.setTimeout(resetchain, 500);
+    } else {
+      var full_chain = chain + '-' + e.handleObj.data;
+      var chain_match = false;
+      switch(full_chain) {
+        case 'g-g':
+          chain_match = true;
+          handle_moveCaratToTop(e);
+          break;
+        case 'd-d':
+          chain_match = true;
+          deleteItem(carat);
+          break;
+      }
+
+      if(chain_match) {
+        Globals.chain = null;
+        clearTimeout(Globals.chain_timer);
+      }
+    }
+  }
+
+  function handle_insert_new_item_above(e) {
+    if(Globals.editing) return;
+
+    e.preventDefault();
+    insert_new_item(carat, carat);
+  }
+
+  function handle_insert_new_item_below(e) {
+    if(Globals.editing) return;
+
+    e.preventDefault();
+    insert_new_item(carat + 1, carat);
+  }
+
+  function handle_click_to_edit(e) {
+    var new_carat = $(e.target).closest('li').data('carat') * 1;
+    console.log('Begin editing from click on ' + new_carat);
+    setCarat(new_carat);
+    editStart();
+  }
+
+  function handle_return_key_down(e) {
+    e.preventDefault();
+
+    if(Globals.editing)
+      insert_new_item(Globals.carat + 1, Globals.carat);
+    else
+      edit_from_start();
+  }
+
+  function handle_begin_edit_from_start(e) {
+    if(Globals.editing) return;
+
+    e.preventDefault();
+    editFromStart();
+  }
+
+  function edit_from_start() {
+    console.log('Begin editing from start at ' + Globals.carat);
+    var task = get_task(Globals.carat)
+    task.focus();
+    edit_start();
+  }
+
+  function edit_start() {
+    get_item(Globals.carat).data('editing', true);
+    Globals.editing = true;
+  }
+
+  function edit_end() {
+    getItem(Globals.carat).data('editing', false);
+    editing = false;
+    save(true);
+  }
+
+  function handle_begin_edit_from_end(e) {
+    if(Globals.editing) return;
+
+    e.preventDefault();
+    editFromEnd();
+  }
+
+  function handle_move_carat_to_end(e) {
+    if(Globals.editing) return;
+
+    e.preventDefault();
+    setCarat(Globals.items-1);
+  }
+
+  function handle_toggle_task(e) {
+    if(Globals.editing) return;
+
+    e.preventDefault();
+    toggleTask(carat);
+  }
+
+  function handle_down(e) {
+    if(Globals.editing) return;
+
+    if(Globals.carat < Globals.items-1)
+      setCarat(Globals.carat+1);
+  }
+
+  function handle_up(e) {
+    if(Globals.editing) return;
+
+    if(Globals.carat > 0)
+      setCarat(Globals.carat-1);
+  }
+
+  function handle_esc(e) {
+    if(!Globals.editing) return;
+
+    e.preventDefault();
+    getTask(carat).blur();
+  }
+
+  function set_carat(c) {
+    var new_carat = c * 1;
+    var carat = new_carat;
+    $('#todo-container ul li').removeClass('focused');
+    get_item(carat).addClass('focused');
+    fix_corners();
+  }
+
+  function fix_corners() {
+    $('#todo-container ul li').css({ 'border-radius': '0' });
+
+    if(Globals.carat == 0)
+      get_item(Globals.carat).css({ 'border-top-left-radius': '5px' });
+
+    if(Globals.carat == Globals.items - 1)
+      get_item(Globals.carat).css({ 'border-bottom-left-radius': '5px' });
+  }
+
+  function toggle_task(carat) {
+    cb = getItem(carat).find('input:checkbox');
+    cb[0].checked = !cb[0].checked;
+  }
+
+  function load(callback) {
+    var list_name = unescape(location.hash.replace(/^#/, ''));
+    if (!list_name.length) {
+      // If there is no list name, it's a new list.
+      console.log('Rendering default item.');
+      $('#todo-container ul').append(render_item(0, false, '', 0));
+      return;
+    }
+    console.log('Loading ' + list_name);
+    //list_name = (location.href.replace(/^.*\?/,'').replace(/#/,'').length) ? location.href.replace(/^.*\?/,'').replace(/#/,'') : 'list-one';
+
+    $.ajax('index.php', {
+      data: {
+        action: 'load',
+        list: list_name
+      },
+      dataType: 'json',
+      success: $.proxy(function(data, textStatus, jqXHR) {
+        if(data.status)
+          $('#title input').val(data.data.title);
+          renderItemsFromJSON(data.data.items);
+          list_data = get_list_as_json();
+        setCarat(0);
+        this();
+      }, callback)
+    });
+  }
+
+  $(document).ready(function() {
+    // The title
+    $('#title input').focus(edit_start).blur(edit_end);
+
+    // The first letters of supported "chains"
+    $(document).bind('keydown', 'd', handle_chain_key_down);
+    $(document).bind('keydown', 'g', handle_chain_key_down);
+    $(document).bind('keydown', 'c', handle_chain_key_down);
+
+    // Moving around.
+    $(document).bind('keydown', 'j', handle_down);
+    $(document).bind('keydown', 'k', handle_up);
+    $(document).bind('keydown', 'down', handle_down);
+    $(document).bind('keydown', 'up', handle_up);
+    $(document).bind('keydown', 'shift+g', handle_move_carat_to_end);
+
+    // Start editing at the beginning.
+    $(document).bind('keydown', 'return', handle_return_key_down);
+    $(document).bind('keydown', 'i', handle_begin_edit_from_start);
+    $(document).bind('keydown', 'shift+i', handle_begin_edit_from_start);
+
+    // Start editing at the end.
+    $(document).bind('keydown', 'shift+a', handle_begin_edit_from_end);
+
+    // End editing.
+    $(document).bind('keydown', 'esc', handle_esc);
+
+    // Inserting new items.
+    $(document).bind('keydown', 'o', handle_insert_new_item_below);
+    $(document).bind('keydown', 'shift+o', handle_insert_new_item_above);
+
+    // Check/uncheck
+    $(document).bind('keydown', 'x', handle_toggle_task);
+
+    // Indent/outdent
+    $(document).bind('keydown', 'h', handle_outdent);
+    $(document).bind('keydown', 'l', handle_indent);
+    $(document).bind('keydown', 'shift+tab', handle_i_outdent);
+    $(document).bind('keydown', 'tab', handle_i_indent);
+
+    // Accessing the help.
+    $(document).bind('keydown', 'shift+/', function() { if(editing) return; $('#help').click(); });
+    $('#help').click(function(e) { $(e.target).fadeOut(function() { $('#help-text').fadeIn(); }) });
+    $('#help-text .done').click(function(e) { $(e.target).closest('div').fadeOut(function() { $('#help').fadeIn(); }) });
+
+    // List handling stuff
+    $('div.nav ul li a').click(loadListMenu);
+    $('#lists').mouseenter(listMenu_mouseenter);
+    $('#lists').mouseleave(listMenu_mouseleave);
+    $('#lists a').click(handle_create_list);
+    $('#lists input').bind('keydown', 'return', handle_create_list);
+
+    $('#paste_box').bind('paste', function(e) {
+      var element = $(e.target);
+      window.setTimeout(function() {
+        var pasted_text = element.val();
+        var pasted_lines = pasted_text.split(/\n/);
+        pasted_lines = _.reject(pasted_lines, function(line) { return !line.length; });
+        _.each(pasted_lines, function(line) {
+          console.log('Adding ' + line);
+          insertNewItem(Globals.items, Globals.items);
+          getItem(Globals.items - 1).find('.task').html(line);
+        });
+      }, 100)
+    });
+
+    // Load the requested list.
+    load(save);
+  });
+})();
+
 var editing = false;
 var chain = null;
 var chainTimer = null;
@@ -127,21 +587,6 @@ function renderItem(carat, done, text, depth, id) {
       );
 }
 
-function redrawList() {
-  renderDepth();
-  fixCorners();
-}
-
-function fixCorners() {
-  $('#todo-container ul li').css({ 'border-radius': '0' });
-
-  if(carat == 0)
-    getItem(carat).css({ 'border-top-left-radius': '5px' });
-
-  if(carat == items - 1)
-    getItem(carat).css({ 'border-bottom-left-radius': '5px' });
-}
-
 function getItemById(id) {
   return $('#todo-container ul li').filter(function() {
     return $(this).data('id') == id;
@@ -154,143 +599,7 @@ function getItemByNewId(id) {
   });
 }
 
-function getItem(carat) {
-  return $('#todo-container ul li').filter(function() {
-    return !$(this).data('deleted') && $(this).data('carat') == carat
-  });
-}
 
-function getTask(carat) {
-  return $('#todo-container ul li').filter(function() {
-    return !$(this).data('deleted') && $(this).data('carat') == carat
-  }).find('div.task');
-}
-
-function renderDepth() {
-  $('#todo-container ul li').filter(filter_activeOnly).each(function() {
-    $(this).css({ 'padding-left': ($(this).data('depth') * 15) + 'px' })
-  });
-}
-
-function insertNewItem(index, sibling_index) {
-  save_lock = true;
-
-  // Ensure a numeric argument
-  index = index * 1;
-  sibling_index = sibling_index * 1;
-
-  new_depth = getItem(sibling_index).data('depth');
-  var new_item = renderItem(index, false, '', new_depth);
-  new_item.data('new_id', uid());
-
-  if(index <= items - 1) {
-    // Increase all carat values greater than or equal to the target index
-    $('#todo-container ul li').filter(function() {
-      return !$(this).data('delete') && $(this).data('carat') * 1 >= index;
-    }).each(function() {
-      this_carat = $(this).data('carat') * 1;
-      $(this).data('carat', this_carat + 1);
-      $(this).find('div.task').removeClass('focused');
-    });
-    getItem(index+1).before(new_item);
-  } else {
-    $('#todo-container ul').append(new_item);
-  }
-
-  // Apply listeners.
-  getTask(index).focus(handle_clickToEdit);
-  getTask(index).blur(editEnd);
-  getTask(index).bind('input propertychange', function(e) {
-    console.log('Input received data.');
-  });
-
-  // Set up the display and begin editing.
-  countCarats();
-  redrawList();
-  setCarat(index);
-  editFromStart();
-
-  save_lock = false;
-}
-
-function handle_insertNewItemAbove(e) {
-  if(editing) return;
-
-  e.preventDefault();
-  insertNewItem(carat, carat);
-}
-
-function handle_insertNewItemBelow(e) {
-  if(editing) return;
-
-  e.preventDefault();
-  insertNewItem(carat + 1, carat);
-}
-
-function handle_i_insertNewItemBelow(e) {
-  if(!editing) return;
-
-  e.preventDefault();
-  insertNewItem(carat + 1, carat);
-}
-
-function countCarats() {
-  items = $('#todo-container ul li').filter(filter_activeOnly).length;
-}
-
-function setCarat(c) {
-  //console.log('set carat to '+c);
-  new_carat = c * 1;
-  carat = new_carat;
-  $('#todo-container ul li').removeClass('focused');
-  getItem(carat).addClass('focused');
-  fixCorners();
-}
-
-function toggleTask(carat) {
-  cb = getItem(carat).find('input:checkbox');
-  //console.log(cb);
-  cb[0].checked = !cb[0].checked;
-}
-
-function handleDown(e) {
-  if(editing) return;
-
-  if(carat < items-1)
-    setCarat(carat+1);
-}
-
-function handleUp(e) {
-  if(editing) return;
-
-  if(carat > 0)
-    setCarat(carat-1);
-}
-
-function handleEsc(e) {
-  if(!editing) return;
-
-  e.preventDefault();
-  getTask(carat).blur();
-  //editEnd();
-}
-
-function editStart() {
-  getItem(carat).data('editing', true);
-  editing = true;
-}
-
-function editEnd() {
-  getItem(carat).data('editing', false);
-  editing = false;
-  save(true);
-}
-
-function editFromStart() {
-  console.log('Begin editing from start at '+carat);
-  getTask(carat).focus();
-  editStart();
-}
 
 function editFromEnd() {
   elm = getTask(carat);
@@ -299,66 +608,9 @@ function editFromEnd() {
   setEndOfContenteditable(elm[0]);
 }
 
-function handle_clickToEdit(e) {
-  new_carat = $(e.target).closest('li').data('carat') * 1;
-  console.log('Begin editing from click on '+new_carat);
-  setCarat(new_carat);
-  editStart();
-}
-
-function handle_returnKeyDown(e) {
-  e.preventDefault();
-
-  if(editing)
-    insertNewItem(carat + 1, carat);
-  else
-    editFromStart();
-}
-
-function handle_beginEditFromStart(e) {
-  if(editing) return;
-
-  e.preventDefault();
-  editFromStart();
-}
-
-function handle_beginEditFromEnd(e) {
-  if(editing) return;
-
-  e.preventDefault();
-  editFromEnd();
-}
-
-function handle_moveCaratToEnd(e) {
-  if(editing) return;
-
-  e.preventDefault();
-  setCarat(items-1);
-}
-
-function handle_toggleTask(e) {
-  if(editing) return;
-
-  e.preventDefault();
-  toggleTask(carat);
-}
 
 function resetchain() {
   chain = null;
-}
-
-function handle_moveCaratToTop(e) {
-  if(editing) return;
-
-  e.preventDefault();
-
-  // This is a chain command, so it only fires on the second press.
-  if(chain == 'g')
-    setCarat(0);
-  else if(chain == null) {
-    chain = 'g';
-    window.setTimeout(resetchain, 500);
-  }
 }
 
 function deleteItem(carat) {
@@ -399,126 +651,7 @@ function deleteItem(carat) {
   redrawList();
 }
 
-function handle_chainKeyDown(e) {
-  if(editing) return;
 
-  if(chain == null) {
-    chain = e.handleObj.data;
-    chainTimer = window.setTimeout(resetchain, 500);
-  } else {
-    full_chain = chain + '-' + e.handleObj.data;
-    chain_match = false;
-    switch(full_chain) {
-      case 'g-g':
-        chain_match = true;
-        handle_moveCaratToTop(e);
-        break;
-      case 'd-d':
-        chain_match = true;
-        deleteItem(carat);
-        break;
-    }
-
-    if(chain_match) {
-      chain = null;
-      clearTimeout(chainTimer);
-    }
-  }
-}
-
-function itemIndent() {
-  console.log('Indenting item '+carat);
-  if(carat == 0) return;
-
-  // The current item
-  item = getItem(carat);
-  // The item directly above the current item
-  mom = getItem(carat - 1);
-  // The current item's depth
-  depth = item.data('depth');
-  // The depth of the item directly above the current item
-  moms_depth = mom.data('depth');
-
-  //console.log('indenting from '+depth+' whilst mother\'s is '+moms_depth);
-
-  // Do not indent more than one greater than the item above
-  if(depth == moms_depth + 1) return;
-
-  // Increase the item's depth
-  item.data('depth', depth + 1);
-  // If this is not the last item, see if we should indent any children
-  if(carat < items - 1) {
-    all_items = $('#todo-container ul li');
-    indent_items = [];
-    for(i in all_items) {
-      item = $(all_items[i]);
-      if(item.data('delete')) continue;
-      if(item.data('carat') <= carat) continue;
-      if(item.data('depth') > depth) indent_items.push(item);
-      else break;
-    }
-    $(indent_items).each(function() {
-      $(this).data('depth', $(this).data('depth') + 1)
-    });
-  }
-
-  // Update the display
-  redrawList();
-  save(true);
-}
-
-function itemOutdent() {
-  // The current item
-  item = getItem(carat);
-  // The current item's depth
-  depth = item.data('depth');
-
-  if(depth == 0) return;
-
-  // Decrease the item's depth
-  item.data('depth', depth - 1);
-  // If this is not the last item, see if we should outdent any children
-  if(carat < items - 1) {
-    all_items = $('#todo-container ul li');
-    indent_items = [];
-    for(i in all_items) {
-      item = $(all_items[i]);
-      if(item.data('delete')) continue;
-      if(item.data('carat') <= carat) continue;
-      if(item.data('depth') > depth) indent_items.push(item);
-      else break;
-    }
-    $(indent_items).each(function() {
-      $(this).data('depth', $(this).data('depth') - 1)
-    });
-  }
-
-  // Update the display
-  redrawList();
-  save(true);
-}
-
-function handle_indent(e) {
-  if(editing) return;
-
-  itemIndent();
-}
-
-function handle_outdent(e) {
-  if(editing) return;
-
-  itemOutdent();
-}
-
-function handle_i_indent(e) {
-  e.preventDefault();
-  itemIndent();
-}
-
-function handle_i_outdent(e) {
-  e.preventDefault();
-  itemOutdent();
-}
 
 function get_list_name_from_title(title) {
   return title.toLowerCase().replace(/[^a-z0-9]/g, '-');
@@ -536,7 +669,7 @@ function setEndOfContenteditable(contentEditableElement) {
         selection.addRange(range);//make the range you have just created the visible selection
     }
     else if(document.selection)//IE 8 and lower
-    { 
+    {
         range = document.body.createTextRange();//Create a range (a range is a like the selection but invisible)
         range.moveToElementText(contentEditableElement);//Select the entire contents of the element with the range
         range.collapse(false);//collapse the range to the end point. false means collapse to end rather than the start
@@ -564,31 +697,6 @@ function get_list_as_json() {
     })
   });
   return JSON.stringify(ret);
-}
-
-function load(callback) {
-  var list_name = unescape(location.hash.replace(/^#/, ''));
-  if (!list_name.length) {
-    return;
-  }
-  console.log('Loading ' + list_name);
-  //list_name = (location.href.replace(/^.*\?/,'').replace(/#/,'').length) ? location.href.replace(/^.*\?/,'').replace(/#/,'') : 'list-one';
-
-  $.ajax('index.php', {
-    data: {
-      action: 'load',
-      list: list_name
-    },
-    dataType: 'json',
-    success: $.proxy(function(data, textStatus, jqXHR) {
-      if(data.status)
-        $('#title input').val(data.data.title);
-        renderItemsFromJSON(data.data.items);
-        list_data = get_list_as_json();
-      setCarat(0);
-      this();
-    }, callback)
-  });
 }
 
 function serverRefresh() {
@@ -622,7 +730,7 @@ function save(immediate) {
     console.log('There is a save lock in place; skipping save.');
     window.clearTimeout(save_timer);
     save_timer = window.setTimeout(save, min_save_delay);
-  
+
     // Set the last saved time (this is the last time a save was attempted)
     last_saved = Date.now();
 
@@ -663,7 +771,7 @@ function save(immediate) {
           console.log(data.data);
           //pruneDeleted(data.data);
           //serverRefresh();
-          
+
           updateItems(data.data);
 
           $('#save-status').removeClass('saving').find('span').html('Saved');
@@ -760,73 +868,3 @@ function create_list(name) {
   });
 }
 
-$(document).ready(function() {
-  // The title
-  $('#title input').focus(editStart).blur(editEnd);
-
-  // The first letters of supported "chains"
-  $(document).bind('keydown', 'd', handle_chainKeyDown);
-  $(document).bind('keydown', 'g', handle_chainKeyDown);
-  $(document).bind('keydown', 'c', handle_chainKeyDown);
-
-  // Moving around.
-  $(document).bind('keydown', 'j', handleDown);
-  $(document).bind('keydown', 'k', handleUp);
-  $(document).bind('keydown', 'down', handleDown);
-  $(document).bind('keydown', 'up', handleUp);
-  $(document).bind('keydown', 'shift+g', handle_moveCaratToEnd);
-  //$(document).bind('keydown', 'g', handle_moveCaratToTop);
-
-  // Start editing at the beginning.
-  $(document).bind('keydown', 'return', handle_returnKeyDown);
-  $(document).bind('keydown', 'i', handle_beginEditFromStart);
-  $(document).bind('keydown', 'shift+i', handle_beginEditFromStart);
-
-  // Start editing at the end.
-  $(document).bind('keydown', 'shift+a', handle_beginEditFromEnd);
-
-  // End editing.
-  $(document).bind('keydown', 'esc', handleEsc);
-
-  // Inserting new items.
-  $(document).bind('keydown', 'o', handle_insertNewItemBelow);
-  $(document).bind('keydown', 'shift+o', handle_insertNewItemAbove);
-
-  // Check/uncheck
-  $(document).bind('keydown', 'x', handle_toggleTask);
-
-  // Indent/outdent
-  $(document).bind('keydown', 'h', handle_outdent);
-  $(document).bind('keydown', 'l', handle_indent);
-  $(document).bind('keydown', 'shift+tab', handle_i_outdent);
-  $(document).bind('keydown', 'tab', handle_i_indent);
-
-  // Accessing the help.
-  $(document).bind('keydown', 'shift+/', function() { if(editing) return; $('#help').click(); });
-  $('#help').click(function(e) { $(e.target).fadeOut(function() { $('#help-text').fadeIn(); }) });
-  $('#help-text .done').click(function(e) { $(e.target).closest('div').fadeOut(function() { $('#help').fadeIn(); }) });
-
-  // List handling stuff
-  $('div.nav ul li a').click(loadListMenu);
-  $('#lists').mouseenter(listMenu_mouseenter);
-  $('#lists').mouseleave(listMenu_mouseleave);
-  $('#lists a').click(handle_create_list);
-  $('#lists input').bind('keydown', 'return', handle_create_list);
-
-  $('#paste_box').bind('paste', function(e) {
-    var element = $(e.target);
-    window.setTimeout(function() {
-      var pasted_text = element.val();
-      var pasted_lines = pasted_text.split(/\n/);
-      pasted_lines = _.reject(pasted_lines, function(line) { return !line.length; });
-      _.each(pasted_lines, function(line) {
-        console.log('Adding ' + line);
-        insertNewItem(items, items);
-        getItem(items-1).find('.task').html(line);
-      });
-    }, 100)
-  });
-
-  // Load the requested list.
-  load(save);
-});
