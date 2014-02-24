@@ -513,6 +513,7 @@ var List = {
   },
 
   save: function(immediate) { // {{{1
+    var that = this;
     var list_title = $('input[name=title]').val();
     var list_name = this.get_list_name_from_title(list_title);
     if (!list_name.length) {
@@ -526,23 +527,23 @@ var List = {
      */
     if(this.Globals.save_lock) {
       console.log('There is a save lock in place; skipping save.');
-      window.clearTimeout(save_timer);
-      save_timer = window.setTimeout(save, min_save_delay);
+      window.clearTimeout(this.Globals.save_timer);
+      this.Globals.save_timer = window.setTimeout(function() { that.save() }, this.Globals.min_save_delay);
 
       // Set the last saved time (this is the last time a save was attempted)
-      last_saved = Date.now();
+      this.Globals.last_saved = Date.now();
 
       return;
     }
 
     console.log('It has been '+(Date.now() - this.Globals.last_saved)+' milliseconds since the last save.');
-    if(Date.now() - last_saved < min_save_delay || editing) {
-      window.clearTimeout(save_timer);
-      save_timer = window.setTimeout(save, min_save_delay);
+    if(Date.now() - this.Globals.last_saved < this.Globals.min_save_delay || this.Globals.editing) {
+      window.clearTimeout(this.Globals.save_timer);
+      this.Globals.save_timer = window.setTimeout(function() { that.save() }, this.Globals.min_save_delay);
       console.log('Document is changing too quickly. Reset the save delay and skip saving.');
 
       // Set the last saved time (this is the last time a save was attempted)
-      last_saved = Date.now();
+      this.Globals.last_saved = Date.now();
 
       return;
     }
@@ -586,7 +587,7 @@ var List = {
     } else {
       console.log('There have been no changes.');
       // Get 1% closer to the maximum save delay.
-      var add_delay = Math.round((max_save_delay - save_delay) * 0.005);
+      var add_delay = Math.round((this.Globals.max_save_delay - this.Globals.save_delay) * 0.005);
       console.log('Adding '+add_delay+' milliseconds ('+(add_delay/1000)+' seconds) to the save delay.');
       this.Globals.save_delay = this.Globals.save_delay + add_delay;
       // Don't exceed the max.
@@ -602,60 +603,57 @@ var List = {
     var that = this;
 
     // The title
-    //$('#title input')
-    //  .focus($.proxy(this.edit_start, this))
-    //  .blur($.proxy(this.edit_end, this));
+    $('#title input')
+      .focus($.proxy(this.edit_start, this))
+      .blur($.proxy(this.edit_end, this));
 
     // The first letters of supported "chains"
-    //$(document).bind('keydown', 'd', function(e) { that.handle_chain_key_down(e) });
-    //$(document).bind('keydown', 'g', function(e) { that.handle_chain_key_down(e) });
-    //$(document).bind('keydown', 'c', function(e) { that.handle_chain_key_down(e) });
-
-    //$(document).bind('keydown', 'r', function(e) { console.log('up'); });
-    //$(document).bind('keydown', 'j', function(e) { console.log('down'); });
+    $(document).bind('keydown', 'd', function(e) { that.handle_chain_key_down(e) });
+    $(document).bind('keydown', 'g', function(e) { that.handle_chain_key_down(e) });
+    $(document).bind('keydown', 'c', function(e) { that.handle_chain_key_down(e) });
 
     // Moving around.
-    //$(document).bind('keydown', 'k',       function(e) { that.handle_up(e); });
-    //$(document).bind('keydown', 'j',       function(e) { that.handle_down(e); });
-    //$(document).bind('keydown', 'down',    function(e) { that.handle_down(e) });
-    //$(document).bind('keydown', 'up',      function(e) { that.handle_up(e) });
-    //$(document).bind('keydown', 'shift+g', function(e) { that.handle_move_carat_to_end(e) });
+    $(document).bind('keydown', 'k',       function(e) { that.handle_up(e); });
+    $(document).bind('keydown', 'j',       function(e) { that.handle_down(e); });
+    $(document).bind('keydown', 'down',    function(e) { that.handle_down(e) });
+    $(document).bind('keydown', 'up',      function(e) { that.handle_up(e) });
+    $(document).bind('keydown', 'shift+g', function(e) { that.handle_move_carat_to_end(e) });
 
     // Start editing at the beginning.
-    //$(document).bind('keydown', 'return',  function(e) { that.handle_return_key_down(e) });
-    //$(document).bind('keydown', 'i',       function(e) { that.handle_begin_edit_from_start(e) });
-    //$(document).bind('keydown', 'shift+i', function(e) { that.handle_begin_edit_from_start(e) });
+    $(document).bind('keydown', 'return',  function(e) { that.handle_return_key_down(e) });
+    $(document).bind('keydown', 'i',       function(e) { that.handle_begin_edit_from_start(e) });
+    $(document).bind('keydown', 'shift+i', function(e) { that.handle_begin_edit_from_start(e) });
 
     // Start editing at the end.
-    //$(document).bind('keydown', 'shift+a', function(e) { that.handle_begin_edit_from_end(e) });
+    $(document).bind('keydown', 'shift+a', function(e) { that.handle_begin_edit_from_end(e) });
 
     // End editing.
-    //$(document).bind('keydown', 'esc', function(e) { that.handle_esc(e); });
+    $(document).bind('keydown', 'esc', function(e) { that.handle_esc(e); });
 
     // Inserting new items.
-    //$(document).bind('keydown', 'o', $.proxy(this.handle_insert_new_item_below, this));
-    //$(document).bind('keydown', 'shift+o', $.proxy(this.handle_insert_new_item_above, this));
+    $(document).bind('keydown', 'o', $.proxy(this.handle_insert_new_item_below, this));
+    $(document).bind('keydown', 'shift+o', $.proxy(this.handle_insert_new_item_above, this));
 
     // Check/uncheck
-    //$(document).bind('keydown', 'x', $.proxy(this.handle_toggle_task, this));
+    $(document).bind('keydown', 'x', $.proxy(this.handle_toggle_task, this));
 
     // Indent/outdent
-    //$(document).bind('keydown', 'h', $.proxy(this.handle_outdent, this));
-    //$(document).bind('keydown', 'l', $.proxy(this.handle_indent, this));
-    //$(document).bind('keydown', 'shift+tab', $.proxy(this.handle_i_outdent, this));
-    //$(document).bind('keydown', 'tab', $.proxy(this.handle_i_indent, this));
+    $(document).bind('keydown', 'h', $.proxy(this.handle_outdent, this));
+    $(document).bind('keydown', 'l', $.proxy(this.handle_indent, this));
+    $(document).bind('keydown', 'shift+tab', $.proxy(this.handle_i_outdent, this));
+    $(document).bind('keydown', 'tab', $.proxy(this.handle_i_indent, this));
 
     // Accessing the help.
-    //$(document).bind('keydown', 'shift+/', $.proxy(function() { if(this.Globals.editing) return; $('#help').click(); }, this));
-    //$('#help').click(function(e) { $(e.target).fadeOut(function() { $('#help-text').fadeIn(); }) });
-    //$('#help-text .done').click(function(e) { $(e.target).closest('div').fadeOut(function() { $('#help').fadeIn(); }) });
+    $(document).bind('keydown', 'shift+/', $.proxy(function() { if(this.Globals.editing) return; $('#help').click(); }, this));
+    $('#help').click(function(e) { $(e.target).fadeOut(function() { $('#help-text').fadeIn(); }) });
+    $('#help-text .done').click(function(e) { $(e.target).closest('div').fadeOut(function() { $('#help').fadeIn(); }) });
 
     // List handling stuff
-    //$('div.nav ul li a').click(loadListMenu);
-    //$('#lists').mouseenter(listMenu_mouseenter);
-    //$('#lists').mouseleave(listMenu_mouseleave);
-    //$('#lists a').click(handle_create_list);
-    //$('#lists input').bind('keydown', 'return', handle_create_list);
+    $('div.nav ul li a').click(loadListMenu);
+    $('#lists').mouseenter(listMenu_mouseenter);
+    $('#lists').mouseleave(listMenu_mouseleave);
+    $('#lists a').click(handle_create_list);
+    $('#lists input').bind('keydown', 'return', handle_create_list);
 
     $('#paste_box').bind('paste', function(e) {
       var element = $(e.target);
@@ -675,42 +673,10 @@ var List = {
     this.load(function() { that.save(); });
   } // }}}
 }
-List.init();
 
-var newList = (function() {
-  var state = 'foo';
-  
-  return {
-    handle_down: function(e) {
-      state = 'down';
-      console.log(state);
-    },
-    handle_up: function(e) {
-      state = 'up';
-      console.log(state);
-    },
-    set_state: function(new_state) {
-      state = new_state;
-    }
-  }
-})();
-
-$(document).bind('keydown', 'j', newList.handle_down);
-$(document).bind('keydown', 'k', newList.handle_up);
-
-var editing = false;
-var chain = null;
-var chainTimer = null;
-var undo_list = [];
-var list_name;
-var list_data;
-var save_lock = false;
-
-var save_timer;
-var min_save_delay = 1500;
-var save_delay = 1500;
-var max_save_delay = 5*60*1000;
-var last_saved;
+$(document).ready(function() {
+  List.init();
+});
 
 function uid() {
     var S4 = function() {
