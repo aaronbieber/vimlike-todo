@@ -557,7 +557,7 @@ var List = {
     if(new_list_data !== this.Globals.list_data) {
       // If saving immediately, clear any pending save timer.
       console.log('Data has changed, preparing to save...');
-      if(immediate) window.clearTimeout(save_timer);
+      if(immediate) window.clearTimeout(this.Globals.save_timer);
 
       this.Globals.save_lock = true;
       $('#save-status').addClass('saving').find('span').html('Saving...');
@@ -578,7 +578,7 @@ var List = {
             location.hash = '#' + list_name;
 
             // Reset the save delay.
-            this.Globals.save_delay = min_save_delay;
+            this.Globals.save_delay = this.Globals.min_save_delay;
             this.Globals.save_timer = window.setTimeout($.proxy(this.save, this), this.save_delay);
             this.Globals.save_lock = false;
           }
@@ -687,13 +687,14 @@ function uid() {
 
 function printArray(arr) {
   if(typeof arr == 'string') arr = JSON.parse(arr);
-  out = "";
+  out = '';
   console.log('{ title: "'+arr.title+'" }');
   for(i in arr.items) {
     o = arr.items[i];
-    out += '{ id:'+((o._id && o._id.$id) ? o._id.$id : o._id)+', item:'+o.item+', ';
+    out += '{ item:'+o.item+', ';
     if(o.delete) out += 'delete: '+o.delete+', ';
-    out += 'text:'+o.text+' }\n';
+    out += 'text:'+o.text+', ';
+    out += 'done:'+(o.done ? 'true' : 'false')+' }\n';
   }
   console.log(out);
 }
